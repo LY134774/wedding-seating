@@ -82,6 +82,8 @@ h1 { font-family: "Songti SC", "SimSun", serif; font-weight: 700; font-size: cla
 .plan { width:684px; height:1034px; position:absolute; transform-origin:0 0; border:2px solid #cbd4c4; border-radius:9px; background:#faf9f0; }
 .zone { position:absolute; border:1px solid #b9c9b7; border-radius:5px; display:grid; place-items:center; color:#3f5746; font-weight:700; font-size:13px; padding:0; letter-spacing:.08em; text-align:center; background:repeating-linear-gradient(135deg,#e9eee2,#e9eee2 7px,#e2e9dd 7px,#e2e9dd 8px); overflow:hidden; }
 .zone.stage { background:#345847; border-color:#345847; color:#fff7e5; font-size:19px; letter-spacing:.23em; }
+.zone.main-aisle, .zone.cross-aisle { background:#dce9df; border-color:#9fb7a7; color:#254835; font-size:17px; }
+.zone.main-aisle { align-items:end; padding-bottom:72px; font-size:15px; letter-spacing:0; }
 .zone.entry { background:#f1e7d5; color:#754a32; border-color:#ddcdb4; }
 .zone.is-selected { box-shadow:inset 0 0 0 2px #b2794f; }
 .table-marker { border:1.4px solid #afbfa9; width:47px; height:47px; border-radius:50%; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:1px; position:absolute; transform:translate(-50%,-50%); font-size:14px; font-weight:700; background:#fffefa; letter-spacing:.03em; user-select:none; padding:0; touch-action:none; }
@@ -147,6 +149,8 @@ dialog::backdrop { background:#20342955; }
   .map-card { grid-row:1; }
   .detail { grid-row:2; }
   .map { height:clamp(355px,105vw,540px); }
+  .map-card .panel-heading { flex-wrap:wrap; }
+  .map-actions { flex-wrap:wrap; }
   .map-actions .button { min-height:38px; }
   .map-controls button { min-height:42px; min-width:44px; }
   .map-footer { padding:9px 11px; gap:8px; }
@@ -254,7 +258,8 @@ dialog::backdrop { background:#20342955; }
 .site-header { position:sticky; top:0; z-index:5; }
 .site-actions { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:8px; min-width:0; }
 .editor-actions { display:flex; align-items:center; gap:5px; }
-.save-plan { min-height:36px; }
+.save-plan { min-height:36px; background:#ad481c; color:#fff; border-color:#ad481c; }
+.save-plan:hover { background:#903916; border-color:#903916; }
 .undo-latest { min-height:36px; font-weight:700; color:#294b3d; background:#edf3e9; border-color:#c9d8c6; }
 .undo-latest:hover:not(:disabled) { background:#dfeadc; }
 .undo-latest:disabled { opacity:.55; cursor:default; background:#f4f4ed; }

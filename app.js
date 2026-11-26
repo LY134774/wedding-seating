@@ -7,7 +7,8 @@ const detail = $('detail');
 const dialog = $('dialog');
 const form = $('dialogForm');
 const width = 684;
-const defaultHeight = 1034;
+const defaultHeight = 1068;
+const undoLimit = 10;
 const mapInset = 68;
 const tableRadius = 25;
 const cloudToken = window.WeddingCloud.readToken(location.hash);
@@ -24,10 +25,15 @@ const previousStorageKey = 'wedding-seating-manual-v3';
 const touchLayout = window.matchMedia('(max-width: 800px)');
 const numberLabel = (number) => String(number).padStart(2, '0');
 const columns = [63,130,197,351,418,485].map((x) => x + mapInset);
-const rows = [132,200,268,336,404,472,540,642,710,778,846];
+const legacyRows = [132,200,268,336,404,472,540,642,710,778,846];
 const sideColumns = [39,645];
-const bottomRow = 914;
-const reserveSpots = [columns[0],columns[2],columns[3],columns[5]].map((x) => ({x,y:bottomRow}));
+const rowStep = 68;
+const firstCrossY = 303;
+const crossGap = 34;
+const legacyBottomRow = 914;
+const bottomRow = legacyBottomRow + crossGap;
+const rows = legacyRows.map((y) => y >= firstCrossY ? y + crossGap : y);
+const reserveSpots = [columns[0],columns[2],columns[3],columns[5]].map((x) => ({x,y:legacyBottomRow}));
 const tableSpots = [
   ...rows.flatMap((y) => [...sideColumns,...columns].map((x) => ({x,y}))),
   ...columns.map((x) => ({x,y:bottomRow}))
@@ -59,13 +65,13 @@ function initialLayout() {
   referenceRows.forEach((names,row) => names.forEach((name,col) => {
     if (!name) return;
     const no = tables.length + 1;
-    tables.push({id:'t'+no, no, name, seats:12, x:columns[col], y:rows[row]});
+    tables.push({id:'t'+no, no, name, seats:12, x:columns[col], y:legacyRows[row]});
   }));
   reserveSpots.forEach((spot) => {
     const no = tables.length + 1;
     tables.push({id:'t'+no, no, name:'备用桌', seats:12, ...spot});
   });
-  return {zones, tables, guests:[], imported:false, importIssues:[]};
+  return upgradeLayout({zones, tables, guests:[], imported:false, importIssues:[]});
 }
 
 function extendZone(zone) {
@@ -94,6 +100,42 @@ function migrateBottomRow(previous, fromSideLayout) {
   return {...previous,tables,zones};
 }
 
+function upgradeLayout(previous) {
+  if (previous.layoutVersion === 2) return previous;
+  const tables = previous.tables.map((table) =>
+    table.y >= firstCrossY ? {...table,y:table.y + crossGap} : table);
+  const referenceCross = previous.zones.find((zone) =>
+    zone.id === 'cross' && zone.x === 23 && zone.y === 575 && zone.w === 638 && zone.h === 32);
+  const entry = previous.zones.find((zone) => zone.id === 'entry' && zone.y > firstCrossY);
+  const zones = previous.zones.map((zone) => {
+    if (zone.id === 'aisle' && zone.x === 305 && zone.y === firstCrossY && zone.w === 74) {
+      const end = entry ? entry.y : zone.y + zone.h;
+      return {...zone,x:300,w:84,h:end + crossGap - zone.y,name:'主通道 4 米',style:'main-aisle'};
+    }
+    if (zone === referenceCross) {
+      return {...zone,y:zone.y + crossGap,name:'横向通道 2.5 米',style:'cross-aisle'};
+    }
+    if (zone.y >= firstCrossY) return {...zone,y:zone.y + crossGap};
+    if (zone.y + zone.h > firstCrossY) return {...zone,h:zone.h + crossGap};
+    return zone;
+  });
+  if (referenceCross && !zones.some((zone) => zone.id === 'cross-front')) {
+    zones.push({...referenceCross,id:'cross-front',y:firstCrossY,name:'横向通道 2.5 米',style:'cross-aisle'});
+  }
+  return {...previous,layoutVersion:2,tables,zones};
+}
+
+function withUpdatedLayout(record) {
+  const undo = record.undo?.data
+    ? {...record.undo,data:upgradeLayout(record.undo.data)}
+    : record.undo;
+  const undoHistory = (undo && Array.isArray(record.undoHistory) ? record.undoHistory : [])
+    .filter((entry) => entry?.data)
+    .slice(0,undoLimit - 1)
+    .map((entry) => ({...entry,data:upgradeLayout(entry.data)}));
+  return {...record,data:upgradeLayout(record.data),undo,undoHistory};
+}
+
 let savedState = {data:initialLayout(),undo:null};
 let storedRevision = null;
 try {
@@ -118,6 +160,7 @@ try {
 } catch {
   // The preview can still open when browser storage is unavailable.
 }
+savedState = withUpdatedLayout(savedState);
 let data = structuredClone(savedState.data);
 
 function planHeight() {
@@ -170,9 +213,9 @@ function notify(message) {
 }
 
 function useSavedState(record, revision) {
-  savedState = record;
+  savedState = withUpdatedLayout(record);
   storedRevision = revision;
-  data = structuredClone(record.data);
+  data = structuredClone(savedState.data);
 }
 
 function persistRecord(record, backupBeforeImport = false) {
@@ -185,13 +228,22 @@ function persistRecord(record, backupBeforeImport = false) {
       else useSavedState({data:initialLayout(),undo:null},null);
       return '另一个窗口刚更新了数据，请重新操作。';
     }
-    const revision = JSON.stringify(record);
     if (backupBeforeImport) {
       previousBackup = localStorage.getItem(importBackupKey);
       localStorage.setItem(importBackupKey,JSON.stringify({createdAt:Date.now(),data:savedState.data}));
       wroteBackup = true;
     }
-    localStorage.setItem(storageKey,revision);
+    let revision;
+    for (;;) {
+      revision = JSON.stringify(record);
+      try {
+        localStorage.setItem(storageKey,revision);
+        break;
+      } catch (error) {
+        if (error.name !== 'QuotaExceededError' || !record.undoHistory?.length) throw error;
+        record = {...record,undoHistory:record.undoHistory.slice(0,-1)};
+      }
+    }
     useSavedState(record,revision);
     return '';
   } catch {
@@ -212,7 +264,11 @@ function commitChange(next,label,backupBeforeImport = false) {
   if (JSON.stringify(next) === JSON.stringify(savedState.data)) return '';
   const snapshot = structuredClone(next);
   const metadata = inCloud ? {serverRevision:savedState.serverRevision,pending:true} : {};
-  return persistRecord({data:snapshot,undo:{data:savedState.data,label},...metadata},backupBeforeImport);
+  const undo = {data:savedState.data,label};
+  const undoHistory = savedState.undo
+    ? [savedState.undo, ...savedState.undoHistory].slice(0,undoLimit - 1)
+    : [];
+  return persistRecord({data:snapshot,undo,undoHistory,...metadata},backupBeforeImport);
 }
 
 function save(message,label) {
@@ -225,10 +281,7 @@ function save(message,label) {
 
 function renderEditorActions() {
   $('editorActions').hidden = isReadOnly();
-  const button = $('undoLatest');
-  const entry = savedState.undo;
-  button.disabled = !entry;
-  button.textContent = entry ? '撤销' + entry.label : '撤销上一步';
+  $('undoLatest').disabled = cloudBusy || !savedState.undo;
 }
 
 $('savePlan').onclick = () => {
@@ -241,13 +294,15 @@ $('savePlan').onclick = () => {
 
 $('undoLatest').onclick = () => {
   const entry = savedState.undo;
-  if (!entry || isReadOnly()) return;
+  if (!entry || isReadOnly() || cloudBusy) return;
+  const [nextEntry = null, ...undoHistory] = savedState.undoHistory;
+  const previousHeight = planHeight();
   const metadata = inCloud ? {serverRevision:savedState.serverRevision,pending:true} : {};
-  const error = persistRecord({data:entry.data,undo:null,...metadata});
+  const error = persistRecord({data:entry.data,undo:nextEntry,undoHistory,...metadata});
   if (!currentTable() && !currentZone()) selection = null;
   locatedSeat = null;
   render();
-  if (entry.label.includes('导入') || entry.label.includes('恢复')) fit();
+  if (previousHeight !== planHeight() || entry.label.includes('导入') || entry.label.includes('恢复')) fit();
   notify(error || '已撤销' + entry.label);
 };
 
@@ -368,8 +423,16 @@ function showDetail(open) {
   }
 }
 
+function lastTableRow() {
+  return Math.max(bottomRow, ...data.tables.map((table) => table.y));
+}
+
 function snapTable(x, y) {
-  const match = tableSpots.reduce((nearest, spot) => {
+  const spots = [...tableSpots];
+  for (let row = bottomRow + rowStep; row <= lastTableRow(); row += rowStep) {
+    for (const column of columns) spots.push({x:column,y:row});
+  }
+  const match = spots.reduce((nearest, spot) => {
     const distance = Math.hypot(x - spot.x, y - spot.y);
     return distance < nearest.distance ? {...spot,distance} : nearest;
   }, {distance:40});
@@ -452,7 +515,20 @@ function renderGuestList() {
     }
     return row;
   });
-  $('guestList').replaceChildren(...(items.length ? items : [element('p','empty',search ? '没有找到相关宾客。' : '这里暂时没有宾客。')]));
+  const tableNumber = /^(\d+)(?:\s*号(?:\s*桌)?)?$/.exec(search.normalize('NFKC'));
+  const matchedTable = tableNumber && data.tables.find((table) => table.no === Number(tableNumber[1]));
+  if (matchedTable) {
+    const row = element('div','guest');
+    const result = button('', () => locate(matchedTable), 'guest-person');
+    const icon = element('span','avatar','桌');
+    icon.setAttribute('aria-hidden','true');
+    const label = element('span','');
+    label.append(element('strong','',tableName(matchedTable)));
+    result.append(icon,label);
+    row.append(result);
+    items.unshift(row);
+  }
+  $('guestList').replaceChildren(...(items.length ? items : [element('p','empty',search ? '没有找到匹配的宾客或桌位。' : '这里暂时没有宾客。')]));
 }
 
 function editParty(first) {
@@ -468,6 +544,7 @@ function editParty(first) {
 }
 
 function renderMap(groups = describeDesks()) {
+  plan.style.height = planHeight() + 'px';
   const counts = new Map();
   data.guests.forEach(({tableId}) => counts.set(tableId, (counts.get(tableId) || 0) + 1));
   const zones = data.zones.map((zone) => {
@@ -509,12 +586,16 @@ function select(type, id, jump = true, seat = null) {
   if (jump) showDetail(true);
 }
 
-function locate(table, seat) {
+function centerTable(table, verticalPoint = 0.5) {
   scale = Math.max(scale, fitScale * 1.65);
+  offset = {x:canvas.clientWidth / 2 - table.x * scale, y:canvas.clientHeight * verticalPoint - table.y * scale};
+  applyTransform();
+}
+
+function locate(table, seat) {
   const mapRect = canvas.getBoundingClientRect();
   if (touchLayout.matches) window.scrollTo(0, window.scrollY + mapRect.top - 12);
-  offset = {x:canvas.clientWidth / 2 - table.x * scale, y:canvas.clientHeight * (touchLayout.matches ? 0.31 : 0.5) - table.y * scale};
-  applyTransform();
+  centerTable(table, touchLayout.matches ? 0.31 : 0.5);
   select('table', table.id, true, seat);
 }
 
@@ -953,8 +1034,10 @@ function deleteTable(table) {
   confirmDialog('删除圆桌', message, '删除', () => {
     affected.forEach(clearSeat);
     data.tables = data.tables.filter((item) => item.id !== table.id);
-    selection = null;
-    save('已删除圆桌','删除圆桌');
+    if (save('已删除圆桌','删除圆桌')) {
+      selection = null;
+      showDetail(false);
+    }
   });
 }
 
@@ -998,10 +1081,63 @@ function canPlaceZone(zone) {
     !data.tables.some((table) => overlapsZone(table.x, table.y, zone));
 }
 
+function tableSpotIsClear(x, y, except, zones = data.zones) {
+  return !zones.some((zone) => overlapsZone(x, y, zone)) &&
+    !data.tables.some((table) => table.id !== except && Math.hypot(table.x - x, table.y - y) < tableRadius * 2);
+}
+
 function canPlaceTable(x, y, except) {
   return x >= tableRadius && y >= tableRadius && x <= width - tableRadius && y <= planHeight() - tableRadius &&
-    !data.zones.some((zone) => overlapsZone(x, y, zone)) &&
-    !data.tables.some((table) => table.id !== except && Math.hypot(table.x - x, table.y - y) < tableRadius * 2);
+    tableSpotIsClear(x, y, except);
+}
+
+function tableCapacityAvailable() {
+  if (data.tables.length < 300) return true;
+  notify('已达到 300 张桌的保存上限。');
+  return false;
+}
+
+function createTable(x, y) {
+  const table = {id:id('t'),no:Math.max(0, ...data.tables.map((item) => item.no)) + 1,seats:12,name:'',x,y};
+  data.tables.push(table);
+  return table;
+}
+
+function zonesForAddedRow(y) {
+  const entry = data.zones.find((zone) => zone.id === 'entry' && zone.x === 91 && zone.w === 502 && zone.y > bottomRow);
+  const end = Math.max(entry?.y || 0, y + 45);
+  return data.zones.map((zone) => {
+    if (zone === entry) return {...zone,y:end};
+    if (zone.id === 'aisle' && zone.x === 300 && zone.w === 84 && zone.y === firstCrossY) {
+      return {...zone,h:Math.max(zone.h,end - zone.y)};
+    }
+    return zone;
+  });
+}
+
+function addBottomTable() {
+  if (isReadOnly() || cloudBusy || !tableCapacityAvailable()) return;
+  const firstRow = Math.max(1,Math.ceil((lastTableRow() - bottomRow) / rowStep));
+  const lastZoneEnd = Math.max(bottomRow,...data.zones.map((zone) => zone.y + zone.h));
+  const lastCandidate = Math.max(lastTableRow(),lastZoneEnd) + tableRadius + rowStep;
+  for (let y = bottomRow + firstRow * rowStep; y <= lastCandidate; y += rowStep) {
+    const zones = zonesForAddedRow(y);
+    const x = columns.find((column) => tableSpotIsClear(column,y,null,zones));
+    if (x === undefined) continue;
+    data.zones = zones;
+    const table = createTable(x,y);
+    placement = null;
+    swapFrom = null;
+    locatedSeat = null;
+    selection = {type:'table',id:table.id};
+    showDetail(false);
+    if (save('已在底部添加 ' + numberLabel(table.no) + ' 号桌','底部加桌')) {
+      fit();
+      centerTable(table);
+    }
+    return;
+  }
+  notify('底部暂时没有可用桌位，请检查留空区。');
 }
 
 function beginPlacement(next) {
@@ -1039,11 +1175,11 @@ function placeAt(x, y) {
       return;
     }
     let table = data.tables.find((item) => item.id === position.id);
-    if (!table) {
-      table = {id:id('t'), no:Math.max(0, ...data.tables.map((item) => item.no)) + 1, seats:12, name:''};
-      data.tables.push(table);
+    if (table) Object.assign(table, {x,y});
+    else {
+      if (!tableCapacityAvailable()) return;
+      table = createTable(x,y);
     }
-    Object.assign(table, {x, y});
     selection = {type:'table', id:table.id};
   }
   placement = null;
@@ -1211,6 +1347,7 @@ document.querySelector('.filter').addEventListener('click', (event) => {
 $('addGuest').onclick = $('quickAddGuest').onclick = () => editGuest(null);
 $('detailBackdrop').onclick = () => showDetail(false);
 $('addTable').onclick = () => beginPlacement(placement?.type === 'newTable' ? null : {type:'newTable'});
+$('addBottomTable').onclick = addBottomTable;
 $('addZone').onclick = () => editZone(null);
 $('cancelSwap').onclick = () => { swapFrom = null; renderMapHint(); };
 $('cancelPlacement').onclick = () => beginPlacement(null);

@@ -20,7 +20,7 @@
         <a href="#edit" id="editLink">编辑预览</a><a href="#view" id="viewLink">只读预览</a>
       </nav>
       <div id="editorActions" class="editor-actions" hidden>
-        <button id="undoLatest" class="button undo-latest" type="button" disabled>撤销上一步</button>
+        <button id="undoLatest" class="button undo-latest" type="button" disabled>撤销</button>
         <button id="savePlan" class="button dark save-plan" type="button">保存排座</button>
       </div>
     </div>
@@ -38,7 +38,7 @@
           <div class="guest-actions"><button id="importGuests" class="button" type="button">导入名单</button><input id="guestWorkbook" type="file" accept=".xlsx" hidden><button id="addGuest" class="button dark" type="button">添加宾客</button></div>
         </div>
         <div class="guest-recovery"><button id="restoreImport" class="button" type="button" hidden>恢复导入前的排座</button></div>
-        <label class="search"><span class="search-icon" aria-hidden="true"></span><input id="guestSearch" type="search" placeholder="搜索姓名或分组" aria-label="搜索姓名或分组"></label>
+        <label class="search"><span class="search-icon" aria-hidden="true"></span><input id="guestSearch" type="search" placeholder="搜索姓名、分组或桌号" aria-label="搜索姓名、分组或桌号"></label>
         <div class="filter" aria-label="宾客筛选">
           <button data-filter="all" type="button">全部</button><button data-filter="unseated" type="button">未排座</button>
         </div>
@@ -49,6 +49,7 @@
           <div><h2 id="mapTitle">全场布局</h2><p id="mapHint"></p></div>
           <div class="map-actions" id="mapActions">
             <button id="addTable" type="button" class="button">＋ 圆桌</button>
+            <button id="addBottomTable" type="button" class="button">＋ 底部加桌</button>
             <button id="addZone" type="button" class="button">＋ 留空区</button>
           </div>
         </div>
