@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f6f0">
+  <title>婚礼排座 · 布局预览</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="cloud.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="brand">
+      <span class="brand-icon" aria-hidden="true"><i></i><i></i><i></i><i></i><b></b></span>
+      <div><strong>婚礼排座</strong><small>单场婚礼 · 本地预览</small></div>
+    </div>
+    <div class="site-actions">
+      <nav id="viewModes" class="view-switch" aria-label="预览模式">
+        <a href="#edit" id="editLink">编辑预览</a><a href="#view" id="viewLink">只读预览</a>
+      </nav>
+      <div id="editorActions" class="editor-actions" hidden>
+        <button id="undoLatest" class="button undo-latest" type="button" disabled>撤销上一步</button>
+        <button id="savePlan" class="button dark save-plan" type="button">保存排座</button>
+      </div>
+    </div>
+  </header>
+  <div id="cloudStatus" class="cloud-status" hidden><span id="cloudStatusText" role="status"></span><button id="cloudReload" type="button" class="button" hidden>载入云端最新版</button></div>
+  <main class="page" id="workArea">
+    <section class="page-heading">
+      <div><h1>婚宴座位图</h1><p id="pageHint">按参考图排列，名单由你手动安排</p></div>
+      <div class="heading-tools"><div class="summary" id="summary" aria-live="polite"></div><div class="quick-guest-actions"><button type="button" class="button" id="quickSearch">查宾客</button><button type="button" class="button dark" id="quickAddGuest">添加宾客</button></div></div>
+    </section>
+    <div class="workspace">
+      <aside class="card guests" aria-labelledby="guestTitle">
+        <div class="panel-heading">
+          <div><h2 id="guestTitle">宾客名单</h2><p id="guestSubtitle"></p></div>
+          <div class="guest-actions"><button id="importGuests" class="button" type="button">导入名单</button><input id="guestWorkbook" type="file" accept=".xlsx" hidden><button id="addGuest" class="button dark" type="button">添加宾客</button></div>
+        </div>
+        <div class="guest-recovery"><button id="restoreImport" class="button" type="button" hidden>恢复导入前的排座</button></div>
+        <label class="search"><span class="search-icon" aria-hidden="true"></span><input id="guestSearch" type="search" placeholder="搜索姓名或分组" aria-label="搜索姓名或分组"></label>
+        <div class="filter" aria-label="宾客筛选">
+          <button data-filter="all" type="button">全部</button><button data-filter="unseated" type="button">未排座</button>
+        </div>
+        <div id="guestList" class="guest-list"></div>
+      </aside>
+      <section class="card map-card" aria-labelledby="mapTitle">
+        <div class="panel-heading">
+          <div><h2 id="mapTitle">全场布局</h2><p id="mapHint"></p></div>
+          <div class="map-actions" id="mapActions">
+            <button id="addTable" type="button" class="button">＋ 圆桌</button>
+            <button id="addZone" type="button" class="button">＋ 留空区</button>
+          </div>
+        </div>
+        <details id="deskSummaryDetails" class="desk-summary" open>
+          <summary class="desk-summary-toggle">
+            <strong>桌名统计</strong>
+            <span id="deskSummaryTotal" class="desk-summary-total"></span>
+            <span class="desk-summary-arrow" aria-hidden="true"></span>
+          </summary>
+          <div class="desk-summary-content">
+            <ul id="deskSummary" class="desk-summary-list" aria-live="polite"></ul>
+            <p id="deskSummaryEmpty" class="desk-summary-empty" hidden>暂无圆桌</p>
+          </div>
+        </details>
+        <div class="map-wrap">
+          <div class="map-mode"><button id="cancelSwap" class="button" type="button" hidden>取消换桌</button><button id="cancelPlacement" class="button" type="button" hidden>取消放置</button></div>
+          <button id="mapGestureToggle" class="button map-gesture-toggle" type="button" aria-pressed="false" hidden>操作地图</button>
+          <div id="map" class="map" aria-label="可平移和缩放的婚宴座位图">
+            <div id="plan" class="plan"></div>
+          </div>
+          <div class="map-controls" aria-label="地图操作">
+            <button id="zoomOut" type="button" title="缩小" aria-label="缩小">−</button>
+            <button id="fitMap" type="button" title="全场适配" aria-label="全场适配">全场</button>
+            <button id="zoomIn" type="button" title="放大" aria-label="放大">＋</button>
+          </div>
+        </div>
+        <div class="map-footer">
+          <span><i class="legend-dot full"></i> 有宾客</span><span><i class="legend-dot open"></i> 空桌</span><span><i class="legend-dot reserved"></i> 留空区</span>
+          <span id="zoomLabel" class="zoom-label"></span>
+        </div>
+      </section>
+      <button id="detailBackdrop" type="button" class="detail-backdrop" aria-label="关闭桌位详情" hidden></button>
+      <aside id="detail" class="card detail" aria-label="桌位详情"></aside>
+    </div>
+    <footer class="site-footer">
+      <span id="dataStatus">本地预览 · 修改保存在当前浏览器</span>
+      <span>视觉参考 VibeFather · <a href="https://vibefather.ai/templates/event-venue-website">宴会场地图</a> / <a href="https://vibefather.ai/templates/wedding-invitation-and-rsvp-website">婚礼配色</a></span>
+    </footer>
+  </main>
+  <div id="notice" class="notice" role="status" hidden></div>
+  <dialog id="dialog" aria-labelledby="dialogTitle">
+    <form id="dialogForm">
+      <div class="dialog-heading"><h2 id="dialogTitle"></h2><button id="closeDialog" class="icon-button" type="button" aria-label="关闭">×</button></div>
+      <div id="dialogFields" class="dialog-fields"></div>
+      <div id="dialogError" class="dialog-error" role="alert"></div>
+      <div class="dialog-actions"><button id="cancelDialog" class="button" type="button">取消</button><button id="dialogSave" class="button dark" type="submit">保存</button><button id="dialogAlternateSave" class="button dark" type="submit" hidden>保存并排座</button></div>
+    </form>
+  </dialog>
+</body>
+</html>
